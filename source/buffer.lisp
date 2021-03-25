@@ -328,6 +328,21 @@ Must be one of `:always' (accept all cookies), `:never' (reject all cookies),
 
 (define-user-class internal-buffer)
 
+(define-class editor-buffer (internal-buffer)
+  ((file :documentation "The file being edited.")
+   (default-modes '(ace-mode base-mode)))
+  (:export-class-name-p t)
+  (:export-accessor-names-p t)
+  (:export-predicate-name-p t)
+  (:accessor-name-transformer (hu.dwim.defclass-star:make-name-transformer name))
+  (:documentation "Each editor buffer matches a file. Each editor buffer
+  contains an editor mode instance."))
+
+(define-user-class editor-buffer)
+
+(defmethod editor ((editor-buffer editor-buffer))
+  (find-submode editor-buffer 'editor-mode))
+
 (defun make-dummy-buffer ()
   ;; Internal buffers are lighter than full-blown buffers which can have a
   ;; WebKit context, etc.
@@ -530,7 +545,7 @@ If URL is `:default', use `default-new-buffer-url'.
 LOAD-URL-P controls whether to load URL right at buffer creation."
   (let* ((buffer (buffer-make *browser* :title title
                                         :default-modes modes
-                                        :nosave-buffer-p t))
+                                        :buffer-class 'user-nosave-buffer))
          (url (if (eq url :default)
                   (default-new-buffer-url buffer)
                   url)))
@@ -540,25 +555,32 @@ LOAD-URL-P controls whether to load URL right at buffer creation."
           (setf (url buffer) (quri:uri url))))
     buffer))
 
-(define-command make-internal-buffer (&key (title "") modes
-                                      no-history-p)
+(define-command make-internal-buffer (&key (title "") modes no-history-p)
   "Create a new buffer.
 MODES is a list of mode symbols.
 If URL is `:default', use `default-new-buffer-url'."
-  (buffer-make *browser* :title title :default-modes modes :internal-buffer-p t
-               :no-history-p no-history-p))
+  (buffer-make *browser* :title title
+                         :default-modes modes
+                         :buffer-class 'user-internal-buffer
+                         :no-history-p no-history-p))
+
+(define-command make-editor-buffer (&key (title "") modes)
+  "Create a new editor buffer."
+  (buffer-make *browser* :title title
+                         :default-modes modes
+                         :buffer-class 'user-editor-buffer))
 
 (declaim (ftype (function (browser &key (:title string)
                                    (:data-profile data-profile)
                                    (:default-modes list)
                                    (:dead-buffer buffer)
                                    (:nosave-buffer-p boolean)
-                                   (:internal-buffer-p boolean)
+                                   (:buffer-class symbol)
                                    (:parent-buffer buffer)
                                    (:no-history-p boolean)))
                 buffer-make))
 (defun buffer-make (browser &key data-profile title default-modes
-                                 dead-buffer internal-buffer-p
+                                 dead-buffer (buffer-class 'user-web-buffer)
                                  parent-buffer no-history-p
                                  (nosave-buffer-p (nosave-buffer-p parent-buffer)))
   "Make buffer with title TITLE and modes DEFAULT-MODES.
@@ -569,10 +591,7 @@ If DEAD-BUFFER is a dead buffer, recreate its web view and give it a new ID."
                       ;; Dead buffer ID must be renewed before calling `ffi-buffer-make'.
                       (setf (id dead-buffer) (get-unique-buffer-identifier *browser*))
                       (ffi-buffer-make dead-buffer))
-                    (apply #'make-instance (cond
-                                             (internal-buffer-p 'user-internal-buffer)
-                                             (nosave-buffer-p 'user-nosave-buffer)
-                                             (t 'user-web-buffer))
+                    (apply #'make-instance buffer-class
                            :id (get-unique-buffer-identifier *browser*)
                            (append (when title `(:title ,title))
                                    (when default-modes `(:default-modes ,default-modes))
