@@ -16,15 +16,15 @@
                                                                 '())))
                            ")"))))
 
-(defmacro command-docstring-first-sentence (fn)
+(defmacro command-docstring-first-sentence (fn &key (sentence-case-p nil))
   "Print FN first docstring sentence in HTML."
   `(if (fboundp ,fn)
        (spinneret:with-html
          (:span
-          (sera:ensure-suffix
-           (or (first (ppcre:split "\\.\\s" (documentation ,fn 'function)))
-               (error "Undocumented function ~a." ,fn))
-           ".")))
+          (or ,(if sentence-case-p
+                   `(sera:ensure-suffix (str:sentence-case (first (ppcre:split "\\.\\s" (documentation ,fn 'function)))) ".")
+                   `(sera:ensure-suffix (first (ppcre:split "\\.\\s" (documentation ,fn 'function))) "."))
+              (error "Undocumented function ~a." ,fn))))
        (error "~a is not a function." ,fn)))
 
 (deftype nyxt-keymap-value ()
